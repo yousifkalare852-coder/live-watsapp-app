@@ -1,9 +1,20 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
+const qrcode = require('qrcode-terminal');
+const http = require('http');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_ADMIN_ID = process.env.TELEGRAM_ADMIN_ID;
+
+// دروستکردنی سێرڤەرێکی سادە بۆ ئەوەی ڕێندەر پۆرتەکە بخوێنێتەوە و سێرڤەرەکە نەکوژێتەوە
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('وەتسئاپ بۆ تێلیگرام کار دەکات...');
+}).listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
 
 async function startWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
@@ -11,18 +22,27 @@ async function startWhatsApp() {
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true
+        printQRInTerminal: false 
     });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+        
+        // پیشاندانی QR کۆدەکە بە شێوازی چوارگۆشەیی نوێ لەناو لۆگی ڕێندەردا
+        if (qr) {
+            console.log('--------------------------------------------------');
+            console.log('📥 تکایە ئەم QR کۆدە سکیان بکە لە ڕێگەی وەتسئاپەوە:');
+            qrcode.generate(qr, { small: true });
+            console.log('--------------------------------------------------');
+        }
+
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startWhatsApp();
         } else if (connection === 'open') {
-            console.log('✅ وەتسئاپ بە سەرکەوتوویی بەستراوەوە!');
+            console.log('✅ وەتسئاپ بە سەرکەوتوویی بەستراوەوە و چالاکە!');
         }
     });
 
@@ -44,7 +64,7 @@ async function startWhatsApp() {
                         parse_mode: 'Markdown'
                     });
                 } catch (err) {
-                    console.error("هەڵە لە ناردن:", err.message);
+                    console.error("هەڵە لە ناردنی پەیام بۆ تێلیگرام:", err.message);
                 }
             }
         }
