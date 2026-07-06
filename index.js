@@ -1,74 +1,126 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const pino = require('pino');
 const axios = require('axios');
-const qrcode = require('qrcode-terminal');
 const http = require('http');
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_ADMIN_ID = process.env.TELEGRAM_ADMIN_ID;
+const ID_INSTANCE = '710701675528';
+const API_TOKEN_INSTANCE = 'c5e69a0d11d9498ea2cfba3f6d8b0eb5f91c5947919f405aa2';
+const TELEGRAM_BOT_TOKEN = '8950271184:AAEIIVI6O_uCDItY3cZOYFXoXnby7-9JFio';
 
-// دروستکردنی سێرڤەرێکی سادە بۆ ئەوەی ڕێندەر پۆرتەکە بخوێنێتەوە و سێرڤەرەکە نەکوژێتەوە
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('وەتسئاپ بۆ تێلیگرام کار دەکات...');
-}).listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
+// لێرە ئایدی گرووپەکانت دابنێ دواتر
+const CHAT_IDS = {
+    delivery: 'YOUR_DELIVERY_CHAT_ID', 
+    support: 'YOUR_SUPPORT_CHAT_ID',   
+    archive: 'YOUR_ARCHIVE_CHAT_ID'    
+};
+
+// یادگەی کاتی بۆ ناسینەوەی قۆناغی کڕیار (تۆماری دۆخی کڕیار)
+const userSessions = {};
+
+const server = http.createServer((req, res) => {
+    if (req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                if (data.typeWebhook === 'incomingMessageReceived') {
+                    await handleBotLogic(data);
+                }
+            } catch (err) {
+                console.error('Webhook error:', err);
+            }
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('OK');
+        });
+    } else {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Server is Running');
+    }
 });
 
-async function startWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-    
-    const sock = makeWASocket({
-        auth: state,
-        logger: pino({ level: 'silent' }),
-        printQRInTerminal: false 
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        // پیشاندانی QR کۆدەکە بە شێوازی چوارگۆشەیی نوێ لەناو لۆگی ڕێندەردا
-        if (qr) {
-            console.log('--------------------------------------------------');
-            console.log('📥 تکایە ئەم QR کۆدە سکیان بکە لە ڕێگەی وەتسئاپەوە:');
-            qrcode.generate(qr, { small: true });
-            console.log('--------------------------------------------------');
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startWhatsApp();
-        } else if (connection === 'open') {
-            console.log('✅ وەتسئاپ بە سەرکەوتوویی بەستراوەوە و چالاکە!');
-        }
-    });
-
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.key.fromMe && m.type === 'notify') {
-            const from = msg.key.remoteJid;
-            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
-            const name = msg.pushName || "کڕیاری نەناسراو";
-
-            if (text && from.endsWith('@s.whatsapp.net')) {
-                const cleanNumber = from.split('@')[0];
-                const report = `📥 *پەیامی نوێ لە وەتسئاپەوە*\n\n👤 *ناو:* ${name}\n📱 *ژمارە:* ${cleanNumber}\n💬 *پەیام:* ${text}`;
-                
-                try {
-                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                        chat_id: TELEGRAM_ADMIN_ID,
-                        text: report,
-                        parse_mode: 'Markdown'
-                    });
-                } catch (err) {
-                    console.error("هەڵە لە ناردنی پەیام بۆ تێلیگرام:", err.message);
-                }
-            }
-        }
-    });
+async function sendWhatsAppMessage(chatId, text) {
+    try {
+        await axios.post(`https://api.green-api.com/waInstance${ID_INSTANCE}/sendMessage/${API_TOKEN_INSTANCE}`, {
+            chatId: chatId,
+            message: text
+        });
+    } catch (err) {
+        console.error('Error sending WA:', err.message);
+    }
 }
 
-startWhatsApp();
+async function sendToTelegram(chatId, text) {
+    if (!chatId || chatId.includes('YOUR_')) return;
+    try {
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'Markdown'
+        });
+    } catch (err) {
+        console.error('Error sending TG:', err.message);
+    }
+}
+
+async function handleBotLogic(webhookData) {
+    const senderData = webhookData.senderData;
+    const messageData = webhookData.messageData;
+
+    if (!messageData || messageData.typeMessage !== 'textMessage') return;
+
+    const chatId = senderData.chatId;
+    const clientName = senderData.senderName || 'کڕیار';
+    const clientPhone = chatId.split('@')[0];
+    const messageText = messageData.textMessageData.textMessage.trim();
+
+    // ئەگەر کڕیارەکە نوێ بێت یان لە دەرەوەی مینیو بێت
+    if (!userSessions[chatId]) {
+        userSessions[chatId] = { step: 'menu' };
+        const menuText = `سڵاو *${clientName}*، بەخێربێیت پۆ پشتیوانی دوکانەکەمان. 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n١ - بۆ داواکاری نوێ و کڕینی کاڵا 🚚\n٢ - بۆ کێشە و پشتیوانی کڕیاران ⚠️`;
+        await sendWhatsAppMessage(chatId, menuText);
+        return;
+    }
+
+    const currentStep = userSessions[chatId].step;
+
+    // کاتێک کڕیار لە لاپەڕەی سەرەکی مینیودایە و ژمارە هەڵدەبژێرێت
+    if (currentStep === 'menu') {
+        if (messageText === '1' || messageText === '١') {
+            userSessions[chatId].step = 'awaiting_delivery_details';
+            await sendWhatsAppMessage(chatId, "تکایە (ناوی تەواو، ناونیشانی ورد، و جۆری کاڵاکە) بە یەک نامە بنوسە تا تۆماری بکەین.");
+        } else if (messageText === '2' || messageText === '٢') {
+            userSessions[chatId].step = 'awaiting_support_details';
+            await sendWhatsAppMessage(chatId, "تکایە کێشەکەت یان داواکارییەکەت بنوسە، کارمەندەکانمان ڕاستەوخۆ دەیبینن.");
+        } else {
+            await sendWhatsAppMessage(chatId, "تکایە تەنها ژمارە [1] یان [2] بنوسە بۆ هەڵبژاردنی بەشەکان.");
+        }
+        return;
+    }
+
+    // وەرگرتنی زانیاری داواکاری کڕین و ناردنی بۆ تێلیگرامی بەڕێکردن
+    if (currentStep === 'awaiting_delivery_details') {
+        const deliveryText = `🚚 *[داواکاری نوێ لە وەتسئاپەوە]*\n\n👤 *ناو:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n📝 *زانیاری کڕین:* \n${messageText}`;
+        await sendToTelegram(CHAT_IDS.delivery, deliveryText);
+        
+        // ناردنی بۆ بەشی ئەرشیفی گشتی
+        await sendToTelegram(CHAT_IDS.archive, `📁 *[ئەرشیف - کڕین]*\n👤 ${clientName} - ${clientPhone}\n🛒 داواکاری تۆمارکرد.`);
+
+        await sendWhatsAppMessage(chatId, "سوپاس بۆ داواکارییەکەت! زانیارییەکانت نێردرایە بەشی بەڕێکردن و بە زووترین کات پێوەندیت پێوە دەکەین. ✨");
+        delete userSessions[chatId]; // سڕینەوەی کاتی بۆ ئەوەی گەر نامەی ناردەوە مینیو بێتەوە
+        return;
+    }
+
+    // وەرگرتنی کێشەکە و ناردنی بۆ گرووپی پشتیوانی کڕیاران
+    if (currentStep === 'awaiting_support_details') {
+        const supportText = `⚠️ *[کێشەی کڕیار - پشتیوانی]*\n\n👤 *کڕیار:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n💬 *کێشەکە:* ${messageText}`;
+        await sendToTelegram(CHAT_IDS.support, supportText);
+
+        await sendWhatsAppMessage(chatId, "نامەکەت گەیشتە بەشی پشتیوانی. کارمەندەکانمان ئێستا پێداچوونەوەی بۆ دەکەن.");
+        delete userSessions[chatId];
+        return;
+    }
+}
+
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
