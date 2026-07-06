@@ -1,18 +1,19 @@
 const axios = require('axios');
 const http = require('http');
 
+// کلیلەکانی GREEN-API و تێلیگرام
 const ID_INSTANCE = '710701675528';
 const API_TOKEN_INSTANCE = 'c5e69a0d11d9498ea2cfba3f6d8b0eb5f91c5947919f405aa2';
 const TELEGRAM_BOT_TOKEN = '8950271184:AAEIIVI6O_uCDItY3cZOYFXoXnby7-9JFio';
 
-// لێرە ئایدی گرووپەکانت دابنێ دواتر
+// ئایدی فەرمی کەناڵەکانی تۆ لە تێلیگرام
 const CHAT_IDS = {
-    delivery: 'YOUR_DELIVERY_CHAT_ID', 
-    support: 'YOUR_SUPPORT_CHAT_ID',   
-    archive: 'YOUR_ARCHIVE_CHAT_ID'    
+    delivery: '-1004498318409',  // بەشی بەرید (محمد ڕۆژ)
+    support: '-1004384835355',   // بەشی کێشەی کڕیاران (کەنەدی)
+    archive: '-1004467931305'    // بەشی فرۆش و حیسابات (کاک فەرهاد)
 };
 
-// یادگەی کاتی بۆ ناسینەوەی قۆناغی کڕیار (تۆماری دۆخی کڕیار)
+// بیرگەی کاتی بۆ پاراستنی دۆخی کڕیار و کاتەکەی
 const userSessions = {};
 
 const server = http.createServer((req, res) => {
@@ -49,15 +50,14 @@ async function sendWhatsAppMessage(chatId, text) {
 }
 
 async function sendToTelegram(chatId, text) {
-    if (!chatId || chatId.includes('YOUR_')) return;
     try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
             chat_id: chatId,
             text: text,
             parse_mode: 'Markdown'
         });
-    } catch (err) {
-        console.error('Error sending TG:', err.message);
+    } catch (error) {
+        console.error('Error sending to Telegram:', error.message);
     }
 }
 
@@ -72,17 +72,24 @@ async function handleBotLogic(webhookData) {
     const clientPhone = chatId.split('@')[0];
     const messageText = messageData.textMessageData.textMessage.trim();
 
-    // ئەگەر کڕیارەکە نوێ بێت یان لە دەرەوەی مینیو بێت
+    // ئەگەر کڕیارەکە هیچ سێشنێکی نەبێت، مینیوی سەرەکی پێ نیشان دەدەین
     if (!userSessions[chatId]) {
-        userSessions[chatId] = { step: 'menu' };
-        const menuText = `سڵاو *${clientName}*، بەخێربێیت پۆ پشتیوانی دوکانەکەمان. 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n١ - بۆ داواکاری نوێ و کڕینی کاڵا 🚚\n٢ - بۆ کێشە و پشتیوانی کڕیاران ⚠️`;
+        userSessions[chatId] = { 
+            step: 'menu', 
+            lastInteraction: Date.now(),
+            reminded: false 
+        };
+        const menuText = `سڵاو *${clientName}*، بەخێربێیت بۆ پشتیوانی دوکانەکەمان. 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n١ - بۆ داواکاری نوێ و کڕینی کاڵا 🚚\n٢ - بۆ کێشە و پشتیوانی کڕیاران ⚠️`;
         await sendWhatsAppMessage(chatId, menuText);
         return;
     }
 
+    // نوێکردنەوەی کاتی کۆتا نامەی کڕیار
+    userSessions[chatId].lastInteraction = Date.now();
+    userSessions[chatId].reminded = false; 
     const currentStep = userSessions[chatId].step;
 
-    // کاتێک کڕیار لە لاپەڕەی سەرەکی مینیودایە و ژمارە هەڵدەبژێرێت
+    // قۆناغی هەڵبژاردنی مینیو
     if (currentStep === 'menu') {
         if (messageText === '1' || messageText === '١') {
             userSessions[chatId].step = 'awaiting_delivery_details';
@@ -96,29 +103,44 @@ async function handleBotLogic(webhookData) {
         return;
     }
 
-    // وەرگرتنی زانیاری داواکاری کڕین و ناردنی بۆ تێلیگرامی بەڕێکردن
+    // وەرگرتنی زانیاری بەڕێکردن و ناردنی بۆ کەناڵی بەڕێکردن (محمد ڕۆژ)
     if (currentStep === 'awaiting_delivery_details') {
-        const deliveryText = `🚚 *[داواکاری نوێ لە وەتسئاپەوە]*\n\n👤 *ناو:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n📝 *زانیاری کڕین:* \n${messageText}`;
+        const deliveryText = `🚚 *[داواکاری نوێ]*\n\n👤 *ناو:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n📝 *زانیاری:* \n${messageText}`;
         await sendToTelegram(CHAT_IDS.delivery, deliveryText);
+        await sendToTelegram(CHAT_IDS.archive, `📁 *[ئەرشیف - کڕین]*\n👤 ${clientName} (${clientPhone}) داواکاری تۆمارکرد.`);
         
-        // ناردنی بۆ بەشی ئەرشیفی گشتی
-        await sendToTelegram(CHAT_IDS.archive, `📁 *[ئەرشیف - کڕین]*\n👤 ${clientName} - ${clientPhone}\n🛒 داواکاری تۆمارکرد.`);
-
-        await sendWhatsAppMessage(chatId, "سوپاس بۆ داواکارییەکەت! زانیارییەکانت نێردرایە بەشی بەڕێکردن و بە زووترین کات پێوەندیت پێوە دەکەین. ✨");
-        delete userSessions[chatId]; // سڕینەوەی کاتی بۆ ئەوەی گەر نامەی ناردەوە مینیو بێتەوە
+        await sendWhatsAppMessage(chatId, "سوپاس بۆ داواکارییەکەت! زانیارییەکانت نێردرایە بەشی بەڕێکردن. ✨");
+        delete userSessions[chatId]; 
         return;
     }
 
-    // وەرگرتنی کێشەکە و ناردنی بۆ گرووپی پشتیوانی کڕیاران
+    // وەرگرتنی کێشەکە و ناردنی بۆ کەناڵی کێشەی کڕیاران (کەنەدی)
     if (currentStep === 'awaiting_support_details') {
-        const supportText = `⚠️ *[کێشەی کڕیار - پشتیوانی]*\n\n👤 *کڕیار:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n💬 *کێشەکە:* ${messageText}`;
+        const supportText = `⚠️ *[کێشەی کڕیار]*\n\n👤 *کڕیار:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n💬 *دەق:* ${messageText}`;
         await sendToTelegram(CHAT_IDS.support, supportText);
+        await sendToTelegram(CHAT_IDS.archive, `📁 *[ئەرشیف - پشتیوانی]*\n👤 ${clientName} (${clientPhone}) سکاڵای نارد.`);
 
         await sendWhatsAppMessage(chatId, "نامەکەت گەیشتە بەشی پشتیوانی. کارمەندەکانمان ئێستا پێداچوونەوەی بۆ دەکەن.");
         delete userSessions[chatId];
         return;
     }
 }
+
+// سیستمی پشکنینی ئۆتۆماتیکی ٢٤ کاتژمێر جارێک (Checking every 1 hour)
+setInterval(async () => {
+    const NOW = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000; // ٢٤ کاتژمێر بە میلی چرکە
+
+    for (const chatId in userSessions) {
+        const session = userSessions[chatId];
+        // ئەگەر کڕیارەکە لە ناو پڕۆسەکەدا بوو و ٢٤ کاتژمێر تێپەڕیبوو و هێشتا ئاگادار نەکراوەتەوە
+        if (session.step !== 'menu' && (NOW - session.lastInteraction >= TWENTY_FOUR_HOURS) && !session.reminded) {
+            session.reminded = true;
+            const reminderText = "سڵاو هاوڕێم، هیوادارم کاتت باش بێت. مینیوی داواکارییەکەت نیوەچڵ مابووەوە، ئایا هێشتا دەتەوێت بەڕێکردنی کاڵاکەت (بەرید) بۆ تەواو بکەین؟ ئەگەر دەتەوێت تەنها نامەیەک بنووسەرەوە.";
+            await sendWhatsAppMessage(chatId, reminderText);
+        }
+    }
+}, 60 * 60 * 1000); // هەموو کاتژمێرێک پشکنین دەکات
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
