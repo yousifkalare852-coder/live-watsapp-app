@@ -2,7 +2,7 @@ const axios = require('axios');
 const http = require('http');
 
 const ID_INSTANCE = '710701675528';
-const API_TOKEN_INSTANCE = 'c5e69a0d11d9498ea2cfba3f6d8b0eb5f91c5947919f405aa2';
+const API_TOKEN_INSTANCE = 'c5e69a0d11d9498ea2cfba3f6d8b0ea5f91c5947919f405aa2';
 const TELEGRAM_BOT_TOKEN = '8950271184:AAEIIVI6O_uCDItY3cZOYFXoXnby7-9JFio';
 
 const CHAT_IDS = {
@@ -58,17 +58,14 @@ async function sendToTelegram(chatId, text) {
     }
 }
 
-// فەنکشن بۆ هێنانی لیستی ناوی چاتەکان و ناردنی نامەی بەکۆمەڵ
 async function broadcastMessage(textToSend) {
     try {
         const response = await axios.get(`https://api.green-api.com/waInstance${ID_INSTANCE}/getChats/${API_TOKEN_INSTANCE}`);
         const chats = response.data;
         if (Array.isArray(chats)) {
             for (const chat of chats) {
-                // تەنها بۆ ژمارە شەخسییەکان بنێرێت نەک گرووپەکان
                 if (chat.id.endsWith('@c.us')) {
                     await sendWhatsAppMessage(chat.id, textToSend);
-                    // کەمێک وەستان بۆ ئەوەی وەتسئاپ بلۆکی نەکات
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
@@ -97,7 +94,6 @@ async function handleBotLogic(webhookData) {
         messageText = `[ناردنی مێدیا: ${msgType}]`;
     }
 
-    // لێرەدا فەرمانەکانی خۆت کۆنترۆڵ دەکەین کاتێک نامەکە لەلایەن خودی ئەدۆمۆنەوە (مۆبایلی خۆتەوە) دەنوسرێت
     if (webhookData.instanceData && webhookData.instanceData.wid === chatId) {
         if (messageText === '@کەرەم_لایڤ') {
             const startLiveText = `سڵاو هاوڕێی بەڕێزم ✨🌸 لایڤی ئەمشەومان دەستی پێکرد! چەندین کاڵا و ئەشیای نایاب و ناوازەمان ئامادە کردووە بۆتان. کاتێکی خۆش و پڕ خێر لەگەڵمان بەسەر بەرن. چاوڕێتانین! 🎉`;
@@ -106,7 +102,6 @@ async function handleBotLogic(webhookData) {
         }
         if (messageText === '@کۆتایی_لایڤ') {
             const endLiveText = `سوپاس بۆ کڕینی ئەشیاکان لە لایڤی ئەمشەومان، متمانەتان جێگای شانازی ئێمەیە 🌸 تکایە کۆی گشتی نرخ یان بڕی ئەو ئەشیاکانەمان بۆ بنوسە کە ئەمشەو کڕیوتە تا کارمەندەکانمان فۆرمی ناردنەکەت بۆ ئامادە بکەن. 🚚`;
-            // هەموو کڕیارەکان دەخەینە دۆخی چاوڕێی نرخەوە
             for (const key in userSessions) {
                 userSessions[key].step = 'awaiting_price_total';
             }
@@ -115,23 +110,21 @@ async function handleBotLogic(webhookData) {
         }
     }
 
-    // ئەگەر کڕیار پێشتر لە دۆخی وەرگرتنی نرخدا بووبێت دوای لایڤ
     if (userSessions[chatId] && userSessions[chatId].step === 'awaiting_price_total') {
         const priceText = `💰 *[حیساباتی لایڤ - نرخی ئەشیا]*\n\n👤 *کڕیار:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n💵 *کۆی گشتی نرخ:* ${messageText}`;
-        await sendToTelegram(CHAT_IDS.archive, priceText); // دەنێردرێت بۆ بەشی فڕۆش و حیسابات
+        await sendToTelegram(CHAT_IDS.archive, priceText);
         await sendWhatsAppMessage(chatId, "زۆر سوپاس، حیساباتەکەت تۆمارکرا و درایە بەشی وردبینی. 🤍");
         delete userSessions[chatId];
         return;
     }
 
-    // ئەگەر کڕیارەکە تازە نامەی ناردبێت (مینیوی ئاسایی)
     if (!userSessions[chatId]) {
         userSessions[chatId] = { 
             step: 'menu', 
             lastInteraction: Date.now(),
             reminded: false 
         };
-        const menuText = `سڵاو *${clientName}*، بەخێربێیت بۆ پشتیوانی دوکانەکەمان. 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n١ - بۆ داواکاری نوێ و کڕینی کاڵا 🚚\n٢ - بۆ کێشە و پشتیوانی کڕیاران ⚠️`;
+        const menuText = `سڵاو *${clientName}*، بەخێربێیت بۆ کەرەم ئۆنڵاین. 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n١ - بۆ ناردنی زانیاری و گەیاندنی کاڵا 🚚\n٢ - بۆ پەیوەندیکردن بە کارمەندی پەیج 💬`;
         await sendWhatsAppMessage(chatId, menuText);
         return;
     }
@@ -143,10 +136,10 @@ async function handleBotLogic(webhookData) {
     if (currentStep === 'menu') {
         if (messageText === '1' || messageText === '١') {
             userSessions[chatId].step = 'awaiting_delivery_details';
-            await sendWhatsAppMessage(chatId, "تکایە (ناوی تەواو، ناونیشانی ورد، و جۆری کاڵاکە) بە نامەیەک بنوسە تا تۆماری بکەین.");
+            await sendWhatsAppMessage(chatId, "تکایە (ناوی تەواو، ناونیشانی ورد، و جۆری کاڵاکە) بە یەک نامە بنوسە تا کارمەندەکانمان فۆرمی گەیاندنت بۆ ڕێکبخەن.");
         } else if (messageText === '2' || messageText === '٢') {
             userSessions[chatId].step = 'awaiting_support_details';
-            await sendWhatsAppMessage(chatId, "تکایە کێشەکەت یان داواکارییەکەت بنوسە، کارمەندەکانمان دەیبینن.");
+            await sendWhatsAppMessage(chatId, "تکایە داواکاری یان پرسیارەکەت بنوسە، کارمەندەکانمان ڕاستەوخۆ وەڵامت دەدەنەوە.");
         } else {
             await sendWhatsAppMessage(chatId, "تکایە تەنها ژمارە [1] یان [2] بنوسە بۆ هەڵبژاردنی بەشەکان.");
         }
@@ -164,7 +157,7 @@ async function handleBotLogic(webhookData) {
         await sendToTelegram(CHAT_IDS.delivery, deliveryText);
         await sendToTelegram(CHAT_IDS.archive, `📁 *[ئەرشیف]*\n👤 ${clientName} (${clientPhone}) زانیاری نارد.`);
         
-        await sendWhatsAppMessage(chatId, "سوپاس بۆ داواکارییەکەت! زانیارییەکانت نێردرایە بەشی بەڕێکردن. ✨");
+        await sendWhatsAppMessage(chatId, "زۆر سوپاس! زانیارییەکانت بە سەرکەوتوویی تۆمارکران. ✨");
         delete userSessions[chatId]; 
         return;
     }
@@ -173,13 +166,12 @@ async function handleBotLogic(webhookData) {
         const supportText = `⚠️ *[کێشەی کڕیار]*\n\n👤 *کڕیار:* ${clientName}\n📞 *ژمارە:* ${clientPhone}\n💬 *ناوەرۆک:* \n${logText}`;
         await sendToTelegram(CHAT_IDS.support, supportText);
         
-        await sendWhatsAppMessage(chatId, "نامەکەت گەیشتە بەشی پشتیوانی. کارمەندەکانمان ئێستا پێداچوونەوەی بۆ دەکەن.");
+        await sendWhatsAppMessage(chatId, "نامەکەت گەیشتە دەست کارمەندەکانمان. ئێستا پێداچوونەوەی بۆ دەکەن.");
         delete userSessions[chatId];
         return;
     }
 }
 
-// سیستمی پشکنینی ٢٤ کاتژمێری
 setInterval(async () => {
     const NOW = Date.now();
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -188,7 +180,7 @@ setInterval(async () => {
         const session = userSessions[chatId];
         if (session.step !== 'menu' && session.step !== 'awaiting_price_total' && (NOW - session.lastInteraction >= TWENTY_FOUR_HOURS) && !session.reminded) {
             session.reminded = true;
-            const reminderText = "سڵاو هاوڕێم، مینیوی داواکارییەکەت نیوەچڵ مابووەوە، ئایا هێشتا دەتەوێت بەڕێکردنی کاڵاکەت (بەرید) بۆ تەواو بکەین؟ ئەگەر دەتەوێت تەنها نامەیەک بنووسەرەوە.";
+            const reminderText = "سڵاو هاوڕێم، پرۆسەی تۆمارکردنی داواکارییەکەت نیوەچڵ مابووەوە، ئایا هێشتا دەتەوێت ناردنی کاڵاکەت بۆ تەواو بکەین؟ ئەگەر دەتەوێت تەنها نامەیەک بنووسەرەوە.";
             await sendWhatsAppMessage(chatId, reminderText);
         }
     }
@@ -196,5 +188,5 @@ setInterval(async () => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${
-        
+    console.log(`Server is running on port ${PORT}`);
+});
