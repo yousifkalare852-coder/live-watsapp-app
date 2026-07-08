@@ -1,7 +1,7 @@
 {
-  "name": "live-whatsapp-bot",
+  "name": "live-watsapp-app",
   "version": "1.0.0",
-  "description": "WhatsApp to Telegram Bot via GREEN-API",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
