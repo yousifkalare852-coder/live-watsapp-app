@@ -41,8 +41,9 @@ const server = http.createServer((req, res) => {
                 console.error('[SERVER ERROR] Error parsing webhook JSON:', err.message);
             }
             
-            res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end('OK');
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: "success" }));
+
         });
     } else {
         // Health check for Render dashboard
