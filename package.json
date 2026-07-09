@@ -6,5 +6,5 @@
   "scripts": {
     "start": "node index.js"
   },
-  "dependencies": {
-    "axios
+  "dependencies": {}
+}
