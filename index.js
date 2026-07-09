@@ -20,8 +20,6 @@ const userSessions = {};
 // CORE WEB SERVER FOR WEBHOOKS
 // ==========================================
 const server = http.createServer((req, res) => {
-    console.log(`[SERVER LOG] Request Received: ${req.method} ${req.url}`);
-
     if (req.method === 'POST') {
         let body = '';
         
@@ -32,21 +30,19 @@ const server = http.createServer((req, res) => {
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
-                console.log("[SERVER LOG] JSON Parsed Successfully");
+                console.log("[SERVER LOG] Webhook Type:", data.typeWebhook || "Unknown");
                 
-                if (data.typeWebhook === 'incomingMessageReceived') {
-                    await handleBotLogic(data);
-                }
+                // ناردنی داتا بۆ بەشی لۆجیک
+                await handleBotLogic(data);
+                
             } catch (err) {
                 console.error('[SERVER ERROR] Error parsing webhook JSON:', err.message);
             }
             
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: "success" }));
-
         });
     } else {
-        // Health check for Render dashboard
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('Kerem Store WhatsApp Bot Server is Running Smoothly!');
     }
@@ -73,11 +69,7 @@ async function sendWhatsAppMessage(chatId, text) {
 // TELEGRAM DISPATCH FUNCTION
 // ==========================================
 async function sendToTelegram(chatId, text) {
-    if (!chatId) {
-        console.log('[TELEGRAM] Skipping send: No Chat ID provided.');
-        return;
-    }
-    console.log(`[TELEGRAM] Attempting to send message to group: ${chatId}`);
+    if (!chatId) return;
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
         await axios.post(url, {
@@ -85,7 +77,7 @@ async function sendToTelegram(chatId, text) {
             text: text,
             parse_mode: 'Markdown'
         });
-        console.log(`[TELEGRAM] Message successfully sent to ${chatId}`);
+        console.log(`[TELEGRAM] Message sent to ${chatId}`);
     } catch (err) {
         console.error('[TELEGRAM ERROR] Failed to send TG message:', err.message);
     }
@@ -95,41 +87,58 @@ async function sendToTelegram(chatId, text) {
 // CORE BOT LOGIC & SESSION MANAGEMENT
 // ==========================================
 async function handleBotLogic(webhookData) {
-    console.log("[BOT LOGIC] Handling incoming message event...");
-    
-    const senderData = webhookData.senderData;
-    const messageData = webhookData.messageData;
+    // دەرهێنانی داتاکان بەپێی هەموو جۆرەکانی فۆرماتی گرین ئەی پی ئای
+    let senderData = webhookData.senderData;
+    let messageData = webhookData.messageData;
 
-    if (!messageData || messageData.typeMessage !== 'textMessage') {
-        console.log("[BOT LOGIC] Skipped: Message is empty or not text format.");
+    // ئەگەر داتاکە لە ناو body دا پێچرابێتەوە
+    if (webhookData.body) {
+        if (webhookData.body.senderData) senderData = webhookData.body.senderData;
+        if (webhookData.body.messageData) messageData = webhookData.body.messageData;
+    }
+
+    // ئەگەر نامەکە بە فۆرماتی نوێی گرین ئەی پی ئای بێت
+    if (!senderData && webhookData.instanceData && webhookData.timestamp) {
+        console.log("[BOT LOGIC] Dynamic structure mapping initiated...");
+    }
+
+    if (!senderData || !messageData) {
+        console.log("[BOT LOGIC] Skipped: Webhook does not contain active message text.");
         return;
     }
 
     const chatId = senderData.chatId;
     const clientName = senderData.senderName || 'کڕیار';
     const clientPhone = chatId.split('@')[0];
-    const messageText = messageData.textMessageData.textMessage.trim();
+    
+    let messageText = "";
+    if (messageData.textMessageData && messageData.textMessageData.textMessage) {
+        messageText = messageData.textMessageData.textMessage.trim();
+    } else if (messageData.extendedTextMessageData && messageData.extendedTextMessageData.text) {
+        messageText = messageData.extendedTextMessageData.text.trim();
+    }
+
+    if (!messageText) {
+        console.log("[BOT LOGIC] Skipped: Empty message text format.");
+        return;
+    }
 
     console.log(`[NEW MESSAGE] From: ${clientName} (${clientPhone}) - Content: "${messageText}"`);
 
-    // Always archive every single message first
+    // ئەرشیفکردنی نامەکە لە تێلێگرام
     const archiveText = `📁 *[ئەرشیف - نامەی نوێ]*\n👤 *ناو:* ${clientName}\n📞 *ژمارە:* +${clientPhone}\n💬 *نامە:* ${messageText}`;
     await sendToTelegram(CHAT_IDS.archive, archiveText);
 
-    // Check if user is starting fresh or wants to reset the menu
+    // سیستەمی مینیۆ
     if (!userSessions[chatId] || messageText === '0' || messageText === '٠') {
-        console.log(`[SESSION] Initializing or resetting menu for ${chatId}`);
         userSessions[chatId] = { step: 'menu' };
-        
-        const menuText = `سڵاو *${clientName}*، بەخێربێیت بۆ پشتیوانی ئۆتۆماتیکی کۆگای کەرەم 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n\n١ - بۆ داواکاری نوێ و کڕینی کاڵا (بەرید) 🚚\n٢ - بۆ کێشە و پشتیوانی کڕیاران ⚠️\n\n👉 بۆ گەڕانەوە بۆ ئەم مینیوە لە هەر کاتێکدا، بنووسە: 0`;
+        const menuText = `سڵاو *${clientName}*، بەخێربێیت بۆ پشتیوانی ئۆتۆماتیکی کۆگای کەرەم 🌸\n\nتکایە ژمارەی بەشی پێویست بنوسە:\n\n١ - بۆ داواکاری نوێ و کڕینی کاڵا (بەرید) 🚚\n٢ - بۆ کێشە و پشتیوانی کڕیاران ⚠️\n\n👉 بۆ گەڕانەوە بۆ ئەم مینیوە لە هەر کاتێکدا, بنووسە: 0`;
         await sendWhatsAppMessage(chatId, menuText);
         return;
     }
 
     const currentStep = userSessions[chatId].step;
-    console.log(`[SESSION] Client current step: ${currentStep}`);
 
-    // Menu Navigation Layer
     if (currentStep === 'menu') {
         if (messageText === '1' || messageText === '١') {
             userSessions[chatId].step = 'awaiting_delivery_details';
@@ -146,28 +155,20 @@ async function handleBotLogic(webhookData) {
         return;
     }
 
-    // Step: Processing Delivery Details
     if (currentStep === 'awaiting_delivery_details') {
-        console.log(`[DELIVERY] Received data from ${clientName}, forwarding to Telegram.`);
         const deliveryText = `🚚 *[داواکاری نوێ لە وەتسئاپەوە]*\n\n👤 *ناو:* ${clientName}\n📞 *ژمارە:* +${clientPhone}\n📝 *زانیاری کڕین:* \n${messageText}`;
         await sendToTelegram(CHAT_IDS.delivery, deliveryText);
-
         const successDelivery = "✅ سوپاس برا گیان! زانیارییەکانت نێردرایە بەشی بەڕێکردن و گەیاندن. مۆبایلەکەت کراوە بێت. ✨";
         await sendWhatsAppMessage(chatId, successDelivery);
-        
         userSessions[chatId].step = 'menu'; 
         return;
     }
 
-    // Step: Processing Support Details
     if (currentStep === 'awaiting_support_details') {
-        console.log(`[SUPPORT] Received ticket from ${clientName}, forwarding to Telegram.`);
         const supportText = `⚠️ *[کێشەی کڕیار - پشتیوانی]*\n\n👤 *کڕیار:* ${clientName}\n📞 *ژمارە:* +${clientPhone}\n💬 *کێشەکە:* ${messageText}`;
         await sendToTelegram(CHAT_IDS.support, supportText);
-
         const successSupport = "📥 نامەکەت گەیشتە بەشی پشتیوانی. کارمەندەکانمان بە زووترین کات بە دەست وەڵامت دەدەنەوە.";
         await sendWhatsAppMessage(chatId, successSupport);
-        
         userSessions[chatId].step = 'menu';
         return;
     }
@@ -178,7 +179,5 @@ async function handleBotLogic(webhookData) {
 // ==========================================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`==================================================`);
-    console.log(`==> SUCCESS: Server is bound and live on port ${PORT}`);
-    console.log(`==================================================`);
+    console.log(`Server live on port ${PORT}`);
 });
